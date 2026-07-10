@@ -1,12 +1,10 @@
-                                                               # Import the argparse module to handle command-line arguments.
-import argparse
-
-import logging                                                 #(This module provides a flexible framework for emitting log messages from Python programs.
-
-                                                               # Import the pathlib module to work with file system paths in an object-oriented way.
-import pathlib
+import argparse                                                # Import the argparse module to handle command-line arguments.
+import logging                                                 #(This module provides a flexible framework for emitting log messages from Python programs.                                                            
+import pathlib                                                  # Import the pathlib module to work with file system paths in an object-oriented way.
 import sys
 import shutil
+
+from tqdm import tqdm
 
 #(BRAINS OF OUR FILE. KEY- folder we create eg-Images and Value- file extension(.png,.jpg))
 FILE_TYPE_NAME={     
@@ -15,10 +13,10 @@ FILE_TYPE_NAME={
     "Audio" : ['.mp3','.wav','.aac','.flac'],
     "Videos" : ['.mp4','.avi','.mkv','.mov'],
     "Archives" : ['.zip','.rar','.tar','.gz'],
-    "Others" : []                                             # This category will be used for files that don't match any of the above types 
+    "Others" : []                                                     # This category will be used for files that don't match any of the above types 
     }  
 
-def organise_directory(source_path : pathlib.Path):
+def organise_directory(source_path : pathlib.Path, dry_run: bool):
     """
     Scans a directory and organizes files into subdirectories based on their type.
 
@@ -31,40 +29,46 @@ def organise_directory(source_path : pathlib.Path):
                                     to be organized.
     """
     logging.info(f"\nOrganising files in: {source_path}\n")
+    if dry_run:
+        logging.info("---Dry run mode enabled. No files will be moved.---\n")
+    
+    else:
+        logging.warning("---Dry run mode disabled. Files will be moved.---\n")
 
-
-    for item in source_path.iterdir():                              # Iterate through each item in the source directory
-        if item.is_file():                                          # Check if the item is a file (not a directory)
-            file_extension = item.suffix                            # Get the file extension 
-            
+    file_to_process = [item for item in source_path.iterdir() if item.is_file()] 
+    
+    for item in tqdm(file_to_process, desc="Organizing files"):
+            file_extension = item.suffix                           
                         
-            destination_folder_name = 'Others'                       # Default folder for files that don't match any type
-            
-            
-            for category, extensions in FILE_TYPE_NAME.items():     # Iterate through the FILE_TYPE_NAME dictionary
-                if file_extension in extensions:                    # Check if the file extension matches any in the current category
-                        destination_folder_name = category          # If it matches, set the destination folder name to the current category     
-                        break                                       # Exit the loop since we've found a match
+            destination_folder_name = 'Others'                      
+            for category, extensions in FILE_TYPE_NAME.items():     
+                if file_extension in extensions:                     
+                        destination_folder_name = category                
+                        break          
+                                                  
+            destination_dir = source_path / destination_folder_name  
+          
+            if dry_run:
+                destination_path = destination_dir / item.name
+                logging.info(f"Dry run: Would move '{item.name}' to '{destination_path}'")
+            else:
                 
-            destination_dir = source_path / destination_folder_name  # Create the full path for the destination folder
-            destination_dir.mkdir(parents=True, exist_ok=True)       # Create the destination folder if it doesn't exist and its parent directories if necessary
+             destination_dir.mkdir(parents=True, exist_ok=True)       # Create the destination folder if it doesn't exist and its parent directories if necessary
             
-            destination_path = destination_dir / item.name           # Create the full path for the destination file
+            destination_path = destination_dir / item.name           
             
             counter = 1
-            original_destination = destination_path  # Remember the original path
+            original_destination = destination_path                  
 
             if destination_path.exists():
-                logging.warning(f"Conflict: '{item.name}' already exists. Renaming...")
-
-                                                                                     
-            while destination_path.exists():                            # Now find an available name                 
+                logging.warning(f"Conflict: '{item.name}' already exists. Renaming...")                                                              
+            while destination_path.exists():                          # Now find an available name                 
                 new_filename = f"{item.stem} ({counter}){item.suffix}"
                 destination_path = destination_dir / new_filename
                 counter += 1
                 
-            try:                                                         # Attempt to move the file to the destination path
-                shutil.move(str(item), str(destination_path))                      # Move the file to this exact location
+            try:                                                       # Attempt to move the file to the destination path
+                shutil.move(str(item), str(destination_path))         
                 logging.info(f"Moved: {item} -> {destination_path}\n")     
                 
             except PermissionError as e:                             
@@ -73,22 +77,21 @@ def organise_directory(source_path : pathlib.Path):
             except Exception as e:
                 logging.error(f"Unexpected error moving '{item.name}'. Error: {e}")
 
-# This block of code will only run when the script is executed directly
-# from the command line. It's the main entry point for our application.
-
-if __name__ == "__main__":
+if __name__ == "__main__":                                             # This block of code will only run when the script is executed directly from the command line. It's the main entry point for our application.
     
     parser=argparse.ArgumentParser(description="Organise files in a directory by their type")
     parser.add_argument('source_directory', help='The path to the directory you want to organize.')    #(added a postional argument)
-    args = parser.parse_args()                                                                         #(This object contains the user-provided arguments as attributes.so that we can access them in our code.)
+    parser.add_argument('--dry-run', action='store_true', help='Simulate the organization without making any changes.')  #(added an optional argument)
+    args = parser.parse_args()          
+  
     
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler(sys.stdout),logging.FileHandler('organiser.log')])       #(This sets up the logging configuration to display messages with a specific format that includes the timestamp, log level, and message content. The log level is set to INFO, which means that all messages at this level and above will be displayed.)
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[logging.StreamHandler(sys.stdout),logging.FileHandler('organiser.log')])       #(This sets up the logging configuration to display messages with a specific format that includes the timestamp, log level, and message content.
     
     source_path = pathlib.Path(args.source_directory)                                                 #(This converts the user-provided directory path into a Path object, which provides methods for file system operations.)
    
-    if not source_path.is_dir() or not source_path.exists():                                          #(This checks if the provided path is a valid directory. If it's not, we print an error message and exit the program.)
-       print(f"Error: 'source_directory' is not a valid directory path or does not exist.")
+    if not source_path.is_dir() or not source_path.exists():                                          
+       logging.error(f"Error: 'source_directory' is not a valid directory path or does not exist.")
        sys.exit(1)                                                                                    #(This exits the program with a non-zero status code, indicating an error.)
 
-    organise_directory(source_path)                                                                   #(If the path is valid, we call the organise_directory function, passing the Path object as an argument to start the file organization process.)
+    organise_directory(source_path, args.dry_run)                                                                   #(If the path is valid, we call the organise_directory function, passing the Path object as an argument to start the file organization process.)
     
